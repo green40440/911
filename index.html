@@ -1,0 +1,1308 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ArcadeVerse Online - 2D Multiplayer Hub</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;800;900&family=Press+Start+2P&family=Rajdhani:wght@500;700&display=swap');
+    
+    body {
+      font-family: 'Rajdhani', sans-serif;
+      background-color: #0d0f18;
+      color: #f3f4f6;
+      overflow-x: hidden;
+      touch-action: manipulation;
+    }
+    
+    .font-arcade {
+      font-family: 'Press Start 2P', cursive;
+    }
+    
+    .font-tech {
+      font-family: 'Orbitron', sans-serif;
+    }
+
+    .neon-glow-cyan {
+      text-shadow: 0 0 10px rgba(6, 182, 212, 0.7), 0 0 20px rgba(6, 182, 212, 0.4);
+    }
+    
+    .neon-glow-pink {
+      text-shadow: 0 0 10px rgba(236, 72, 153, 0.7), 0 0 20px rgba(236, 72, 153, 0.4);
+    }
+
+    .box-glow-cyan {
+      box-shadow: 0 0 15px rgba(6, 182, 212, 0.3), inset 0 0 15px rgba(6, 182, 212, 0.1);
+    }
+
+    .box-glow-pink {
+      box-shadow: 0 0 15px rgba(236, 72, 153, 0.3), inset 0 0 15px rgba(236, 72, 153, 0.1);
+    }
+
+    canvas {
+      image-rendering: pixelated;
+      touch-action: none;
+    }
+
+    /* Scanline overlay effect */
+    .scanline {
+      position: relative;
+      overflow: hidden;
+    }
+    .scanline::before {
+      content: " ";
+      display: block;
+      position: absolute;
+      top: 0; left: 0; bottom: 0; right: 0;
+      background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%);
+      background-size: 100% 4px;
+      z-index: 20;
+      pointer-events: none;
+      opacity: 0.6;
+    }
+  </style>
+</head>
+<body class="min-h-screen flex flex-col justify-between selection:bg-cyan-500 selection:text-black">
+
+  <!-- TOP BAR / HEADER -->
+  <header class="w-full bg-slate-900/90 border-b border-slate-800 p-4 sticky top-0 z-50 backdrop-blur-md">
+    <div class="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-4">
+      <div class="flex items-center gap-3">
+        <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-cyan-500 to-pink-500 flex items-center justify-center text-slate-950 font-bold text-xl shadow-lg">
+          <i class="fa-solid font-arcade">🎮</i>
+        </div>
+        <div>
+          <h1 class="text-xl md:text-2xl font-black font-tech tracking-wider text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 via-teal-300 to-pink-500">
+            ARCADE<span class="text-pink-500">VERSE</span> ONLINE
+          </h1>
+          <p class="text-xs text-slate-400">Play 2D Arena Games Live With Friends</p>
+        </div>
+      </div>
+
+      <!-- Online Status Badge -->
+      <div class="flex items-center gap-4 text-sm">
+        <div class="bg-slate-800/80 px-3 py-1.5 rounded-lg border border-slate-700 flex items-center gap-2">
+          <span id="connection-dot" class="w-2.5 h-2.5 rounded-full bg-amber-500 animate-pulse"></span>
+          <span id="connection-status" class="text-slate-300 text-xs font-mono">Connecting...</span>
+        </div>
+
+        <div class="hidden sm:flex items-center gap-2 bg-slate-800/80 px-3 py-1.5 rounded-lg border border-slate-700">
+          <i class="fa-solid fa-user text-cyan-400 text-xs"></i>
+          <span id="my-player-id" class="text-xs font-mono text-cyan-300">ID: Loading...</span>
+          <button id="btn-copy-id" class="ml-1 text-slate-400 hover:text-white transition" title="Copy User ID">
+            <i class="fa-solid fa-copy text-xs"></i>
+          </button>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- MAIN CONTAINER -->
+  <main class="max-w-7xl mx-auto w-full p-4 md:p-6 flex-grow flex flex-col items-center justify-center">
+
+    <!-- LOBBY VIEW -->
+    <div id="view-lobby" class="w-full max-w-4xl space-y-8">
+      
+      <!-- HERO BANNER -->
+      <div class="text-center space-y-3 py-4">
+        <h2 class="text-3xl md:text-5xl font-extrabold font-tech neon-glow-cyan text-cyan-400">
+          CHOOSE YOUR MULTIPLAYER ARENA
+        </h2>
+        <p class="text-slate-400 max-w-xl mx-auto text-sm md:text-base">
+          Create a room, send your Room Code to a friend, pick your favorite game mode, and start playing online in seconds!
+        </p>
+      </div>
+
+      <!-- ROOM CREATION / JOIN CARD -->
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <!-- CREATE ROOM -->
+        <div class="bg-slate-900/80 border border-cyan-500/30 rounded-2xl p-6 box-glow-cyan flex flex-col justify-between space-y-4">
+          <div>
+            <div class="flex items-center gap-3 mb-2">
+              <span class="p-2.5 bg-cyan-500/10 text-cyan-400 rounded-xl"><i class="fa-solid fa-plus-circle text-xl"></i></span>
+              <h3 class="text-xl font-bold font-tech text-white">Host a Game Room</h3>
+            </div>
+            <p class="text-xs text-slate-400">Start a new room as Host. You get to select the game mode!</p>
+          </div>
+
+          <div class="space-y-3">
+            <div>
+              <label class="block text-xs font-semibold text-slate-400 mb-1 uppercase tracking-wider">Your Nickname</label>
+              <input type="text" id="host-name-input" placeholder="Player 1" value="Player 1" maxlength="12"
+                class="w-full bg-slate-950 border border-slate-700 rounded-xl px-4 py-2.5 text-slate-200 focus:outline-none focus:border-cyan-400 font-mono text-sm">
+            </div>
+            <button id="btn-create-room" class="w-full py-3 bg-gradient-to-r from-cyan-500 to-teal-500 hover:from-cyan-400 hover:to-teal-400 text-slate-950 font-bold font-tech rounded-xl shadow-lg shadow-cyan-500/20 transition transform active:scale-95 flex items-center justify-center gap-2">
+              <i class="fa-solid fa-gamepad"></i> CREATE NEW ROOM
+            </button>
+          </div>
+        </div>
+
+        <!-- JOIN ROOM -->
+        <div class="bg-slate-900/80 border border-pink-500/30 rounded-2xl p-6 box-glow-pink flex flex-col justify-between space-y-4">
+          <div>
+            <div class="flex items-center gap-3 mb-2">
+              <span class="p-2.5 bg-pink-500/10 text-pink-400 rounded-xl"><i class="fa-solid fa-right-to-bracket text-xl"></i></span>
+              <h3 class="text-xl font-bold font-tech text-white">Join Friend's Room</h3>
+            </div>
+            <p class="text-xs text-slate-400">Got a code from your friend? Enter it below to connect directly!</p>
+          </div>
+
+          <div class="space-y-3">
+            <div>
+              <label class="block text-xs font-semibold text-slate-400 mb-1 uppercase tracking-wider">Your Nickname</label>
+              <input type="text" id="join-name-input" placeholder="Player 2" value="Player 2" maxlength="12"
+                class="w-full bg-slate-950 border border-slate-700 rounded-xl px-4 py-2.5 text-slate-200 focus:outline-none focus:border-pink-500 font-mono text-sm">
+            </div>
+            <div>
+              <label class="block text-xs font-semibold text-slate-400 mb-1 uppercase tracking-wider">Room Code</label>
+              <input type="text" id="join-code-input" placeholder="e.g. 8492" maxlength="6"
+                class="w-full bg-slate-950 border border-slate-700 rounded-xl px-4 py-2.5 text-pink-300 tracking-widest font-mono text-center font-bold focus:outline-none focus:border-pink-400 text-lg uppercase">
+            </div>
+            <button id="btn-join-room" class="w-full py-3 bg-gradient-to-r from-pink-500 to-rose-500 hover:from-pink-400 hover:to-rose-400 text-slate-950 font-bold font-tech rounded-xl shadow-lg shadow-pink-500/20 transition transform active:scale-95 flex items-center justify-center gap-2">
+              <i class="fa-solid fa-plug"></i> JOIN ROOM
+            </button>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- ROOM WAITING / SELECT GAME MODE VIEW -->
+    <div id="view-room" class="w-full max-w-4xl space-y-6 hidden">
+      <!-- ROOM HEADER CARD -->
+      <div class="bg-slate-900 border border-slate-800 rounded-2xl p-6 flex flex-wrap items-center justify-between gap-4">
+        <div>
+          <div class="flex items-center gap-3">
+            <h2 class="text-2xl font-bold font-tech text-white">ROOM CODE:</h2>
+            <span id="room-code-display" class="font-mono text-3xl font-black text-cyan-400 tracking-widest bg-slate-950 px-4 py-1 rounded-xl border border-cyan-500/40">----</span>
+            <button id="btn-copy-code" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-xs font-bold text-slate-300 rounded-lg border border-slate-700 flex items-center gap-1.5 transition">
+              <i class="fa-solid fa-copy text-cyan-400"></i> COPY CODE
+            </button>
+          </div>
+          <p class="text-xs text-slate-400 mt-1">Share this 4-digit code with your friend to let them join!</p>
+        </div>
+
+        <button id="btn-leave-room" class="px-4 py-2 bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/40 rounded-xl text-sm font-semibold transition">
+          <i class="fa-solid fa-door-open mr-1"></i> Leave Room
+        </button>
+      </div>
+
+      <!-- PLAYERS CONNECTED STATUS -->
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <!-- P1 SLOT -->
+        <div id="p1-slot" class="bg-slate-900/60 border-2 border-cyan-500/50 rounded-2xl p-4 flex items-center gap-4">
+          <div class="w-12 h-12 rounded-xl bg-cyan-500/20 border border-cyan-500/40 flex items-center justify-center text-cyan-400 text-xl font-bold font-tech">P1</div>
+          <div>
+            <div id="p1-name" class="font-bold text-cyan-300 font-tech">Waiting...</div>
+            <div class="text-xs text-cyan-500/70 font-mono">HOST (BLUE TEAM)</div>
+          </div>
+        </div>
+
+        <!-- P2 SLOT -->
+        <div id="p2-slot" class="bg-slate-900/60 border-2 border-slate-800 rounded-2xl p-4 flex items-center gap-4">
+          <div id="p2-avatar" class="w-12 h-12 rounded-xl bg-slate-800 border border-slate-700 flex items-center justify-center text-slate-500 text-xl font-bold font-tech">P2</div>
+          <div>
+            <div id="p2-name" class="font-bold text-slate-400 font-tech">Waiting for Player 2...</div>
+            <div id="p2-sub" class="text-xs text-slate-600 font-mono">GUEST (PINK TEAM)</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- GAME SELECTOR (HOST ONLY ALLOWED TO LAUNCH) -->
+      <div class="bg-slate-900/90 border border-slate-800 rounded-2xl p-6 space-y-6">
+        <div>
+          <h3 class="text-xl font-bold font-tech text-white flex items-center gap-2">
+            <i class="fa-solid fa-gamepad text-cyan-400"></i> SELECT GAME TYPE
+          </h3>
+          <p id="select-game-hint" class="text-xs text-slate-400">Host picks the game mode. Select a game below to launch!</p>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <!-- GAME 1: TANKS -->
+          <div data-game="tanks" class="game-card border-2 border-cyan-500 bg-slate-950/80 rounded-2xl p-5 cursor-pointer hover:border-cyan-400 transition relative overflow-hidden group">
+            <div class="absolute -right-4 -bottom-4 opacity-10 text-cyan-400 text-7xl font-bold group-hover:scale-110 transition">🎯</div>
+            <div class="text-3xl mb-2">🎯</div>
+            <h4 class="font-bold font-tech text-cyan-400 text-lg">2D Tank Arena</h4>
+            <p class="text-xs text-slate-400 mt-1">Top-down tactical tank battle! Aim, bounce bullets off walls, and destroy your opponent.</p>
+            <span class="inline-block mt-3 px-2.5 py-1 bg-cyan-500/20 text-cyan-300 text-xs font-semibold rounded-md border border-cyan-500/30">Action Duel</span>
+          </div>
+
+          <!-- GAME 2: PONG -->
+          <div data-game="pong" class="game-card border-2 border-slate-800 bg-slate-950/40 rounded-2xl p-5 cursor-pointer hover:border-pink-500/50 transition relative overflow-hidden group">
+            <div class="absolute -right-4 -bottom-4 opacity-10 text-pink-400 text-7xl font-bold group-hover:scale-110 transition">🏓</div>
+            <div class="text-3xl mb-2">🏓</div>
+            <h4 class="font-bold font-tech text-pink-400 text-lg">Neon Arcade Pong</h4>
+            <p class="text-xs text-slate-400 mt-1">Fast-paced cyber retro pong! Control your paddle, spin the ball, score 5 points first.</p>
+            <span class="inline-block mt-3 px-2.5 py-1 bg-pink-500/20 text-pink-300 text-xs font-semibold rounded-md border border-pink-500/30">Arcade Classic</span>
+          </div>
+
+          <!-- GAME 3: PLATFORM RACE -->
+          <div data-game="race" class="game-card border-2 border-slate-800 bg-slate-950/40 rounded-2xl p-5 cursor-pointer hover:border-amber-500/50 transition relative overflow-hidden group">
+            <div class="absolute -right-4 -bottom-4 opacity-10 text-amber-400 text-7xl font-bold group-hover:scale-110 transition">🏃</div>
+            <div class="text-3xl mb-2">🏃</div>
+            <h4 class="font-bold font-tech text-amber-400 text-lg">Platform Runner</h4>
+            <p class="text-xs text-slate-400 mt-1">Race through obstacles, dodge hazard spikes, jump platforms, and reach the top crown first!</p>
+            <span class="inline-block mt-3 px-2.5 py-1 bg-amber-500/20 text-amber-300 text-xs font-semibold rounded-md border border-amber-500/30">Speed Race</span>
+          </div>
+        </div>
+
+        <!-- START BUTTON (HOST ONLY) -->
+        <div class="pt-2 flex justify-end">
+          <button id="btn-start-game" class="w-full md:w-auto px-8 py-3.5 bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 font-black font-tech text-lg rounded-xl shadow-lg shadow-emerald-500/20 transition transform active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed">
+            <i class="fa-solid fa-play"></i> LAUNCH MATCH
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- GAME ARENA VIEW -->
+    <div id="view-game" class="w-full max-w-5xl space-y-4 hidden flex flex-col items-center">
+      
+      <!-- TOP HUD -->
+      <div class="w-full bg-slate-900 border border-slate-800 rounded-2xl p-3 px-6 flex items-center justify-between shadow-lg">
+        <!-- P1 STATS -->
+        <div class="flex items-center gap-3">
+          <div class="w-3 h-3 rounded-full bg-cyan-400 shadow-[0_0_8px_#22d3ee]"></div>
+          <div>
+            <div id="hud-p1-name" class="font-bold font-tech text-cyan-400 text-sm">Player 1</div>
+            <div id="hud-p1-score" class="font-mono text-xl font-black text-white">0</div>
+          </div>
+        </div>
+
+        <!-- CENTER GAME TITLE & REMATCH -->
+        <div class="text-center">
+          <div id="hud-game-title" class="font-tech text-xs tracking-widest text-slate-400 uppercase">2D TANK ARENA</div>
+          <button id="btn-back-lobby" class="text-xs text-slate-400 hover:text-cyan-400 underline transition mt-0.5">
+            <i class="fa-solid fa-grid-2"></i> Switch Game
+          </button>
+        </div>
+
+        <!-- P2 STATS -->
+        <div class="flex items-center gap-3 text-right">
+          <div>
+            <div id="hud-p2-name" class="font-bold font-tech text-pink-400 text-sm">Player 2</div>
+            <div id="hud-p2-score" class="font-mono text-xl font-black text-white">0</div>
+          </div>
+          <div class="w-3 h-3 rounded-full bg-pink-400 shadow-[0_0_8px_#f472b6]"></div>
+        </div>
+      </div>
+
+      <!-- CANVAS CONTAINER -->
+      <div class="relative w-full aspect-[16/9] max-h-[70vh] bg-slate-950 rounded-2xl border-2 border-slate-800 overflow-hidden shadow-2xl scanline flex items-center justify-center">
+        <canvas id="game-canvas" class="w-full h-full block"></canvas>
+
+        <!-- ROUND OVER OVERLAY -->
+        <div id="game-overlay" class="absolute inset-0 bg-slate-950/90 backdrop-blur-md hidden flex flex-col items-center justify-center p-6 text-center z-30">
+          <h2 id="overlay-title" class="text-3xl md:text-5xl font-black font-tech text-cyan-400 neon-glow-cyan mb-2">VICTORY!</h2>
+          <p id="overlay-msg" class="text-slate-300 font-mono mb-6">Player 1 wins the round!</p>
+          <div class="flex gap-4">
+            <button id="btn-restart-round" class="px-6 py-3 bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold font-tech rounded-xl shadow-lg transition transform active:scale-95">
+              PLAY AGAIN
+            </button>
+            <button id="btn-overlay-lobby" class="px-6 py-3 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold font-tech rounded-xl transition">
+              BACK TO ROOM
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- ON-SCREEN TOUCH CONTROLS FOR MOBILE -->
+      <div id="mobile-controls" class="w-full grid grid-cols-2 gap-4 pt-2 md:hidden">
+        <!-- D-PAD / MOVE -->
+        <div class="bg-slate-900/80 border border-slate-800 rounded-xl p-3 flex justify-center items-center gap-2">
+          <button id="touch-left" class="w-12 h-12 bg-slate-800 active:bg-cyan-500 text-white rounded-lg text-xl font-bold">←</button>
+          <div class="flex flex-col gap-2">
+            <button id="touch-up" class="w-12 h-12 bg-slate-800 active:bg-cyan-500 text-white rounded-lg text-xl font-bold">↑</button>
+            <button id="touch-down" class="w-12 h-12 bg-slate-800 active:bg-cyan-500 text-white rounded-lg text-xl font-bold">↓</button>
+          </div>
+          <button id="touch-right" class="w-12 h-12 bg-slate-800 active:bg-cyan-500 text-white rounded-lg text-xl font-bold">→</button>
+        </div>
+
+        <!-- ACTION BUTTON -->
+        <div class="bg-slate-900/80 border border-slate-800 rounded-xl p-3 flex justify-center items-center">
+          <button id="touch-action" class="w-24 h-24 bg-gradient-to-tr from-pink-500 to-rose-500 active:scale-95 text-slate-950 font-black font-tech rounded-2xl text-lg shadow-lg">
+            ACTION<br><span class="text-xs font-normal">(SPACE)</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- DESKTOP CONTROLS LEGEND -->
+      <div class="text-xs text-slate-500 font-mono text-center">
+        Controls: <span class="text-slate-300 font-semibold">[W,A,S,D]</span> or <span class="text-slate-300 font-semibold">[Arrow Keys]</span> to Move/Aim &bull; <span class="text-slate-300 font-semibold">[SPACE]</span> or <span class="text-slate-300 font-semibold">[ENTER]</span> for Action / Fire / Jump
+      </div>
+
+    </div>
+
+  </main>
+
+  <!-- CUSTOM MODAL / NOTIFICATION -->
+  <div id="modal-alert" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+    <div class="bg-slate-900 border border-slate-700 rounded-2xl max-w-sm w-full p-6 space-y-4 shadow-2xl text-center">
+      <div id="modal-icon" class="text-4xl text-cyan-400">⚠️</div>
+      <h3 id="modal-title" class="text-xl font-bold font-tech text-white">Notice</h3>
+      <p id="modal-msg" class="text-sm text-slate-400">Something happened.</p>
+      <button id="btn-modal-close" class="w-full py-2.5 bg-slate-800 hover:bg-slate-700 text-cyan-400 font-bold font-tech rounded-xl transition">
+        OKAY
+      </button>
+    </div>
+  </div>
+
+  <!-- FOOTER -->
+  <footer class="w-full border-t border-slate-800/80 py-3 text-center text-xs text-slate-500 font-mono">
+    ArcadeVerse Online &bull; Powered by Realtime Multiplayer Sync &bull; 2D Web Canvas
+  </footer>
+
+  <!-- SOUND SYNTHESIZER (Web Audio API) -->
+  <script>
+    class SoundFX {
+      constructor() {
+        this.ctx = null;
+      }
+      init() {
+        if (!this.ctx) {
+          const AudioContext = window.AudioContext || window.webkitAudioContext;
+          if (AudioContext) this.ctx = new AudioContext();
+        }
+        if (this.ctx && this.ctx.state === 'suspended') {
+          this.ctx.resume();
+        }
+      }
+      playShoot() {
+        if (!this.ctx) return;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(440, this.ctx.currentTime);
+        osc.frequency.exponentialRampToValueAtTime(80, this.ctx.currentTime + 0.15);
+        gain.gain.setValueAtTime(0.3, this.ctx.currentTime);
+        gain.gain.linearRampToValueAtTime(0.01, this.ctx.currentTime + 0.15);
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.start();
+        osc.stop(this.ctx.currentTime + 0.15);
+      }
+      playHit() {
+        if (!this.ctx) return;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = 'square';
+        osc.frequency.setValueAtTime(120, this.ctx.currentTime);
+        osc.frequency.linearRampToValueAtTime(30, this.ctx.currentTime + 0.2);
+        gain.gain.setValueAtTime(0.4, this.ctx.currentTime);
+        gain.gain.linearRampToValueAtTime(0.01, this.ctx.currentTime + 0.2);
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.start();
+        osc.stop(this.ctx.currentTime + 0.2);
+      }
+      playJump() {
+        if (!this.ctx) return;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(150, this.ctx.currentTime);
+        osc.frequency.exponentialRampToValueAtTime(450, this.ctx.currentTime + 0.12);
+        gain.gain.setValueAtTime(0.25, this.ctx.currentTime);
+        gain.gain.linearRampToValueAtTime(0.01, this.ctx.currentTime + 0.12);
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.start();
+        osc.stop(this.ctx.currentTime + 0.12);
+      }
+      playWin() {
+        if (!this.ctx) return;
+        const notes = [261.63, 329.63, 392.00, 523.25];
+        notes.forEach((freq, idx) => {
+          const osc = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+          osc.type = 'triangle';
+          osc.frequency.setValueAtTime(freq, this.ctx.currentTime + idx * 0.1);
+          gain.gain.setValueAtTime(0.3, this.ctx.currentTime + idx * 0.1);
+          gain.gain.linearRampToValueAtTime(0.01, this.ctx.currentTime + idx * 0.1 + 0.25);
+          osc.connect(gain);
+          gain.connect(this.ctx.destination);
+          osc.start(this.ctx.currentTime + idx * 0.1);
+          osc.stop(this.ctx.currentTime + idx * 0.1 + 0.25);
+        });
+      }
+    }
+    const audioSFX = new SoundFX();
+    window.addEventListener('keydown', () => audioSFX.init(), { once: true });
+    window.addEventListener('click', () => audioSFX.init(), { once: true });
+  </script>
+
+  <!-- FIREBASE REALTIME MULTIPLAYER SDK IMPORTS -->
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+    import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+    import { getFirestore, doc, setDoc, getDoc, updateDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+    // --- App Setup & Constants ---
+    const appId = typeof __app_id !== 'undefined' ? __app_id : 'arcade-verse-2d';
+    const firebaseConfig = typeof __firebase_config !== 'undefined' 
+      ? JSON.parse(__firebase_config) 
+      : { apiKey: "demo", authDomain: "demo.firebaseapp.com", projectId: "demo" };
+
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+    const db = getFirestore(app);
+
+    let currentUser = null;
+    let currentRoomId = null;
+    let roomUnsubscribe = null;
+    let isHost = false;
+    let selectedGameMode = 'tanks'; // 'tanks', 'pong', 'race'
+    let roomState = null;
+
+    // --- UI Elements ---
+    const viewLobby = document.getElementById('view-lobby');
+    const viewRoom = document.getElementById('view-room');
+    const viewGame = document.getElementById('view-game');
+
+    const connDot = document.getElementById('connection-dot');
+    const connStatus = document.getElementById('connection-status');
+    const myPlayerIdEl = document.getElementById('my-player-id');
+    const btnCopyId = document.getElementById('btn-copy-id');
+
+    const hostNameInput = document.getElementById('host-name-input');
+    const btnCreateRoom = document.getElementById('btn-create-room');
+
+    const joinNameInput = document.getElementById('join-name-input');
+    const joinCodeInput = document.getElementById('join-code-input');
+    const btnJoinRoom = document.getElementById('btn-join-room');
+
+    const roomCodeDisplay = document.getElementById('room-code-display');
+    const btnCopyCode = document.getElementById('btn-copy-code');
+    const btnLeaveRoom = document.getElementById('btn-leave-room');
+
+    const p1NameEl = document.getElementById('p1-name');
+    const p2NameEl = document.getElementById('p2-name');
+    const p2Slot = document.getElementById('p2-slot');
+    const p2Avatar = document.getElementById('p2-avatar');
+    const p2Sub = document.getElementById('p2-sub');
+
+    const gameCards = document.querySelectorAll('.game-card');
+    const btnStartGame = document.getElementById('btn-start-game');
+    const selectGameHint = document.getElementById('select-game-hint');
+
+    const hudP1Name = document.getElementById('hud-p1-name');
+    const hudP2Name = document.getElementById('hud-p2-name');
+    const hudP1Score = document.getElementById('hud-p1-score');
+    const hudP2Score = document.getElementById('hud-p2-score');
+    const hudGameTitle = document.getElementById('hud-game-title');
+    const btnBackLobby = document.getElementById('btn-back-lobby');
+
+    const gameOverlay = document.getElementById('game-overlay');
+    const overlayTitle = document.getElementById('overlay-title');
+    const overlayMsg = document.getElementById('overlay-msg');
+    const btnRestartRound = document.getElementById('btn-restart-round');
+    const btnOverlayLobby = document.getElementById('btn-overlay-lobby');
+
+    const modalAlert = document.getElementById('modal-alert');
+    const modalTitle = document.getElementById('modal-title');
+    const modalMsg = document.getElementById('modal-msg');
+    const btnModalClose = document.getElementById('btn-modal-close');
+
+    function showAlert(title, message) {
+      modalTitle.textContent = title;
+      modalMsg.textContent = message;
+      modalAlert.classList.remove('hidden');
+    }
+    btnModalClose.addEventListener('click', () => modalAlert.classList.add('hidden'));
+
+    // --- Authentication ---
+    async function initAuth() {
+      try {
+        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+          await signInWithCustomToken(auth, __initial_auth_token);
+        } else {
+          await signInAnonymously(auth);
+        }
+      } catch (err) {
+        console.error("Auth Error:", err);
+        connStatus.textContent = "Auth Failed";
+        connDot.className = "w-2.5 h-2.5 rounded-full bg-rose-500";
+      }
+    }
+
+    onAuthStateChanged(auth, (user) => {
+      if (user) {
+        currentUser = user;
+        connStatus.textContent = "Online";
+        connDot.className = "w-2.5 h-2.5 rounded-full bg-emerald-400 shadow-[0_0_8px_#34d399]";
+        myPlayerIdEl.textContent = `ID: ${user.uid.substring(0, 8)}...`;
+      }
+    });
+
+    initAuth();
+
+    btnCopyId.addEventListener('click', () => {
+      if (currentUser) {
+        navigator.clipboard?.writeText(currentUser.uid);
+        showAlert("Copied!", "Your User ID has been copied to clipboard.");
+      }
+    });
+
+    // --- Room & Database Helper Functions ---
+    // Mandatory Rule 1 Pathing: /artifacts/{appId}/public/data/{collectionName}
+    function getRoomRef(code) {
+      return doc(db, 'artifacts', appId, 'public', 'data', 'rooms', code);
+    }
+
+    function generateRoomCode() {
+      return Math.floor(1000 + Math.random() * 9000).toString();
+    }
+
+    // --- Create Room ---
+    btnCreateRoom.addEventListener('click', async () => {
+      if (!currentUser) return showAlert("Error", "Connecting to server... please wait.");
+      const hostName = hostNameInput.value.trim() || "Player 1";
+      const code = generateRoomCode();
+      currentRoomId = code;
+      isHost = true;
+
+      const initialRoomData = {
+        code: code,
+        hostUid: currentUser.uid,
+        hostName: hostName,
+        guestUid: null,
+        guestName: null,
+        status: 'waiting', // waiting, playing
+        selectedGame: 'tanks',
+        scores: { p1: 0, p2: 0 },
+        gameState: {
+          p1: { x: 100, y: 225, angle: 0, vx: 0, vy: 0 },
+          p2: { x: 700, y: 225, angle: Math.PI, vx: 0, vy: 0 },
+          bullets: [],
+          ball: { x: 400, y: 225, vx: 4, vy: 3 },
+          p1Y: 200,
+          p2Y: 200,
+          winner: null
+        },
+        updatedAt: Date.now()
+      };
+
+      try {
+        await setDoc(getRoomRef(code), initialRoomData);
+        listenToRoom(code);
+        showView('room');
+      } catch (err) {
+        console.error("Create Room Error:", err);
+        showAlert("Error", "Failed to create room. Please try again.");
+      }
+    });
+
+    // --- Join Room ---
+    btnJoinRoom.addEventListener('click', async () => {
+      if (!currentUser) return showAlert("Error", "Connecting to server... please wait.");
+      const code = joinCodeInput.value.trim().toUpperCase();
+      const guestName = joinNameInput.value.trim() || "Player 2";
+
+      if (!code || code.length !== 4) {
+        return showAlert("Invalid Code", "Please enter a valid 4-digit room code.");
+      }
+
+      try {
+        const roomDoc = await getDoc(getRoomRef(code));
+        if (!roomDoc.exists()) {
+          return showAlert("Not Found", "Room code does not exist!");
+        }
+
+        const data = roomDoc.data();
+        if (data.guestUid && data.guestUid !== currentUser.uid) {
+          return showAlert("Room Full", "This room already has 2 players!");
+        }
+
+        currentRoomId = code;
+        isHost = (data.hostUid === currentUser.uid);
+
+        if (!isHost) {
+          await updateDoc(getRoomRef(code), {
+            guestUid: currentUser.uid,
+            guestName: guestName,
+            updatedAt: Date.now()
+          });
+        }
+
+        listenToRoom(code);
+        showView('room');
+      } catch (err) {
+        console.error("Join Room Error:", err);
+        showAlert("Error", "Could not join room.");
+      }
+    });
+
+    // --- Copy Code ---
+    btnCopyCode.addEventListener('click', () => {
+      if (currentRoomId) {
+        const tempInput = document.createElement('input');
+        tempInput.value = currentRoomId;
+        document.body.appendChild(tempInput);
+        tempInput.select();
+        document.execCommand('copy');
+        document.body.removeChild(tempInput);
+        showAlert("Copied!", `Room code ${currentRoomId} copied to clipboard!`);
+      }
+    });
+
+    // --- Leave Room ---
+    btnLeaveRoom.addEventListener('click', leaveRoom);
+    function leaveRoom() {
+      if (roomUnsubscribe) {
+        roomUnsubscribe();
+        roomUnsubscribe = null;
+      }
+      stopGameLoop();
+      currentRoomId = null;
+      roomState = null;
+      showView('lobby');
+    }
+
+    // --- Realtime Room Listener ---
+    function listenToRoom(code) {
+      if (roomUnsubscribe) roomUnsubscribe();
+
+      roomUnsubscribe = onSnapshot(getRoomRef(code), (snapshot) => {
+        if (!snapshot.exists()) {
+          showAlert("Room Closed", "Host closed or left the room.");
+          leaveRoom();
+          return;
+        }
+
+        const data = snapshot.data();
+        roomState = data;
+        updateRoomUI(data);
+
+        // Synchronize active view based on status
+        if (data.status === 'playing' && currentView !== 'game') {
+          showView('game');
+          startGameLoop();
+        } else if (data.status === 'waiting' && currentView === 'game') {
+          showView('room');
+          stopGameLoop();
+        }
+      }, (error) => {
+        console.error("Room Listener Error:", error);
+      });
+    }
+
+    // --- UI State Management ---
+    let currentView = 'lobby';
+    function showView(view) {
+      currentView = view;
+      viewLobby.classList.add('hidden');
+      viewRoom.classList.add('hidden');
+      viewGame.classList.add('hidden');
+
+      if (view === 'lobby') viewLobby.classList.remove('hidden');
+      if (view === 'room') viewRoom.classList.remove('hidden');
+      if (view === 'game') viewGame.classList.remove('hidden');
+    }
+
+    function updateRoomUI(data) {
+      roomCodeDisplay.textContent = data.code;
+      p1NameEl.textContent = data.hostName || "Host";
+
+      if (data.guestName) {
+        p2NameEl.textContent = data.guestName;
+        p2NameEl.className = "font-bold text-pink-300 font-tech";
+        p2Slot.className = "bg-slate-900/60 border-2 border-pink-500/50 rounded-2xl p-4 flex items-center gap-4";
+        p2Avatar.className = "w-12 h-12 rounded-xl bg-pink-500/20 border border-pink-500/40 flex items-center justify-center text-pink-400 text-xl font-bold font-tech";
+        p2Sub.textContent = "GUEST (CONNECTED)";
+        p2Sub.className = "text-xs text-pink-400 font-mono";
+      } else {
+        p2NameEl.textContent = "Waiting for Player 2...";
+        p2NameEl.className = "font-bold text-slate-400 font-tech";
+        p2Slot.className = "bg-slate-900/60 border-2 border-slate-800 rounded-2xl p-4 flex items-center gap-4";
+        p2Avatar.className = "w-12 h-12 rounded-xl bg-slate-800 border border-slate-700 flex items-center justify-center text-slate-500 text-xl font-bold font-tech";
+        p2Sub.textContent = "GUEST (PINK TEAM)";
+        p2Sub.className = "text-xs text-slate-600 font-mono";
+      }
+
+      // Game selector UI highlight
+      selectedGameMode = data.selectedGame || 'tanks';
+      gameCards.forEach(card => {
+        const game = card.getAttribute('data-game');
+        if (game === selectedGameMode) {
+          card.classList.add('border-cyan-400', 'bg-slate-950/90');
+          card.classList.remove('border-slate-800', 'bg-slate-950/40');
+        } else {
+          card.classList.remove('border-cyan-400', 'bg-slate-950/90');
+          card.classList.add('border-slate-800', 'bg-slate-950/40');
+        }
+      });
+
+      // Disable/Enable host launcher
+      if (isHost) {
+        btnStartGame.disabled = false;
+        selectGameHint.textContent = "Select a game mode below, then click LAUNCH MATCH!";
+      } else {
+        btnStartGame.disabled = true;
+        selectGameHint.textContent = "Waiting for Host to choose game and launch...";
+      }
+
+      // HUD update
+      hudP1Name.textContent = data.hostName || "Player 1";
+      hudP2Name.textContent = data.guestName || "Player 2";
+      hudP1Score.textContent = data.scores?.p1 || 0;
+      hudP2Score.textContent = data.scores?.p2 || 0;
+      
+      const titles = { tanks: '2D TANK ARENA', pong: 'NEON ARCADE PONG', race: 'PLATFORM RUNNER' };
+      hudGameTitle.textContent = titles[data.selectedGame] || '2D GAME ARENA';
+    }
+
+    // --- Select Game Mode Card Events ---
+    gameCards.forEach(card => {
+      card.addEventListener('click', async () => {
+        if (!isHost || !currentRoomId) return;
+        const mode = card.getAttribute('data-game');
+        selectedGameMode = mode;
+        await updateDoc(getRoomRef(currentRoomId), { selectedGame: mode });
+      });
+    });
+
+    // --- Start Game Button ---
+    btnStartGame.addEventListener('click', async () => {
+      if (!isHost || !currentRoomId) return;
+      if (!roomState.guestName) {
+        return showAlert("Waiting for Friend", "Share the Room Code with your friend so they can join before launching!");
+      }
+
+      // Reset initial game positions for selected mode
+      let initGameState = {};
+      if (selectedGameMode === 'tanks') {
+        initGameState = {
+          p1: { x: 100, y: 225, angle: 0, hp: 3 },
+          p2: { x: 700, y: 225, angle: Math.PI, hp: 3 },
+          bullets: [],
+          winner: null
+        };
+      } else if (selectedGameMode === 'pong') {
+        initGameState = {
+          p1Y: 200,
+          p2Y: 200,
+          ball: { x: 400, y: 225, vx: 5 * (Math.random() > 0.5 ? 1 : -1), vy: 3 * (Math.random() > 0.5 ? 1 : -1) },
+          winner: null
+        };
+      } else if (selectedGameMode === 'race') {
+        initGameState = {
+          p1: { x: 50, y: 380, vy: 0, isGrounded: false },
+          p2: { x: 50, y: 380, vy: 0, isGrounded: false },
+          winner: null
+        };
+      }
+
+      await updateDoc(getRoomRef(currentRoomId), {
+        status: 'playing',
+        scores: { p1: 0, p2: 0 },
+        gameState: initGameState
+      });
+    });
+
+    btnBackLobby.addEventListener('click', async () => {
+      if (currentRoomId && isHost) {
+        await updateDoc(getRoomRef(currentRoomId), { status: 'waiting' });
+      } else {
+        showView('room');
+        stopGameLoop();
+      }
+    });
+
+    btnRestartRound.addEventListener('click', async () => {
+      gameOverlay.classList.add('hidden');
+      if (isHost && currentRoomId) {
+        // Reset state
+        let resetState = {};
+        if (selectedGameMode === 'tanks') {
+          resetState = { p1: { x: 100, y: 225, angle: 0, hp: 3 }, p2: { x: 700, y: 225, angle: Math.PI, hp: 3 }, bullets: [], winner: null };
+        } else if (selectedGameMode === 'pong') {
+          resetState = { p1Y: 200, p2Y: 200, ball: { x: 400, y: 225, vx: 5, vy: 3 }, winner: null };
+        } else if (selectedGameMode === 'race') {
+          resetState = { p1: { x: 50, y: 380, vy: 0, isGrounded: false }, p2: { x: 50, y: 380, vy: 0, isGrounded: false }, winner: null };
+        }
+        await updateDoc(getRoomRef(currentRoomId), { gameState: resetState });
+      }
+    });
+
+    btnOverlayLobby.addEventListener('click', async () => {
+      gameOverlay.classList.add('hidden');
+      if (isHost && currentRoomId) {
+        await updateDoc(getRoomRef(currentRoomId), { status: 'waiting' });
+      } else {
+        showView('room');
+        stopGameLoop();
+      }
+    });
+
+    // ==========================================
+    // CANVASES & GAME ENGINE LOGIC
+    // ==========================================
+    const canvas = document.getElementById('game-canvas');
+    const ctx = canvas.getContext('2d');
+    canvas.width = 800;
+    canvas.height = 450;
+
+    // Keys State
+    const keys = { up: false, down: false, left: false, right: false, action: false };
+
+    window.addEventListener('keydown', (e) => {
+      if (['ArrowUp', 'KeyW'].includes(e.code)) keys.up = true;
+      if (['ArrowDown', 'KeyS'].includes(e.code)) keys.down = true;
+      if (['ArrowLeft', 'KeyA'].includes(e.code)) keys.left = true;
+      if (['ArrowRight', 'KeyD'].includes(e.code)) keys.right = true;
+      if (['Space', 'Enter'].includes(e.code)) keys.action = true;
+    });
+
+    window.addEventListener('keyup', (e) => {
+      if (['ArrowUp', 'KeyW'].includes(e.code)) keys.up = false;
+      if (['ArrowDown', 'KeyS'].includes(e.code)) keys.down = false;
+      if (['ArrowLeft', 'KeyA'].includes(e.code)) keys.left = false;
+      if (['ArrowRight', 'KeyD'].includes(e.code)) keys.right = false;
+      if (['Space', 'Enter'].includes(e.code)) keys.action = false;
+    });
+
+    // Touch controls mapping
+    const bindTouch = (id, keyName) => {
+      const btn = document.getElementById(id);
+      if (!btn) return;
+      btn.addEventListener('touchstart', (e) => { e.preventDefault(); keys[keyName] = true; });
+      btn.addEventListener('touchend', (e) => { e.preventDefault(); keys[keyName] = false; });
+      btn.addEventListener('mousedown', () => { keys[keyName] = true; });
+      btn.addEventListener('mouseup', () => { keys[keyName] = false; });
+    };
+    bindTouch('touch-up', 'up');
+    bindTouch('touch-down', 'down');
+    bindTouch('touch-left', 'left');
+    bindTouch('touch-right', 'right');
+    bindTouch('touch-action', 'action');
+
+    let animFrameId = null;
+    let lastNetworkSync = 0;
+
+    function startGameLoop() {
+      if (!animFrameId) {
+        animFrameId = requestAnimationFrame(gameLoop);
+      }
+    }
+
+    function stopGameLoop() {
+      if (animFrameId) {
+        cancelAnimationFrame(animFrameId);
+        animFrameId = null;
+      }
+    }
+
+    function gameLoop(timestamp) {
+      if (currentView !== 'game' || !roomState) return;
+
+      // Update local input state & compute physics
+      updateLocalPhysics();
+
+      // Render local screen
+      renderCanvas();
+
+      // Sync network at ~20-30fps throttle
+      if (timestamp - lastNetworkSync > 35) {
+        syncGameStateToNetwork();
+        lastNetworkSync = timestamp;
+      }
+
+      animFrameId = requestAnimationFrame(gameLoop);
+    }
+
+    // Local physics calculation before syncing
+    let localBullets = [];
+    let actionKeyLock = false;
+
+    function updateLocalPhysics() {
+      if (!roomState || !roomState.gameState) return;
+      const gs = roomState.gameState;
+      const gameType = roomState.selectedGame || 'tanks';
+
+      // ----------------------------
+      // GAME 1: TANKS PHYSICS
+      // ----------------------------
+      if (gameType === 'tanks') {
+        const playerKey = isHost ? 'p1' : 'p2';
+        const p = gs[playerKey];
+        if (!p) return;
+
+        const speed = 3;
+        const rotSpeed = 0.06;
+
+        if (keys.left) p.angle -= rotSpeed;
+        if (keys.right) p.angle += rotSpeed;
+        if (keys.up) {
+          p.x += Math.cos(p.angle) * speed;
+          p.y += Math.sin(p.angle) * speed;
+        }
+        if (keys.down) {
+          p.x -= Math.cos(p.angle) * (speed * 0.6);
+          p.y -= Math.sin(p.angle) * (speed * 0.6);
+        }
+
+        // Clamp boundaries
+        p.x = Math.max(25, Math.min(canvas.width - 25, p.x));
+        p.y = Math.max(25, Math.min(canvas.height - 25, p.y));
+
+        // Fire missile action
+        if (keys.action && !actionKeyLock) {
+          actionKeyLock = true;
+          audioSFX.playShoot();
+          const bx = p.x + Math.cos(p.angle) * 24;
+          const by = p.y + Math.sin(p.angle) * 24;
+          const bvx = Math.cos(p.angle) * 7;
+          const bvy = Math.sin(p.angle) * 7;
+
+          if (!gs.bullets) gs.bullets = [];
+          gs.bullets.push({ x: bx, y: by, vx: bvx, vy: bvy, owner: playerKey, bounces: 0 });
+        }
+        if (!keys.action) actionKeyLock = false;
+
+        // Host updates global bullets & check collisions
+        if (isHost && gs.bullets) {
+          for (let i = gs.bullets.length - 1; i >= 0; i--) {
+            const b = gs.bullets[i];
+            b.x += b.vx;
+            b.y += b.vy;
+
+            // Bounce wall
+            if (b.x <= 10 || b.x >= canvas.width - 10) { b.vx *= -1; b.bounces++; }
+            if (b.y <= 10 || b.y >= canvas.height - 10) { b.vy *= -1; b.bounces++; }
+
+            // Check hit P1
+            if (gs.p1 && Math.hypot(b.x - gs.p1.x, b.y - gs.p1.y) < 22) {
+              audioSFX.playHit();
+              gs.p1.hp = (gs.p1.hp || 3) - 1;
+              gs.bullets.splice(i, 1);
+              if (gs.p1.hp <= 0) triggerRoundEnd('p2');
+              continue;
+            }
+            // Check hit P2
+            if (gs.p2 && Math.hypot(b.x - gs.p2.x, b.y - gs.p2.y) < 22) {
+              audioSFX.playHit();
+              gs.p2.hp = (gs.p2.hp || 3) - 1;
+              gs.bullets.splice(i, 1);
+              if (gs.p2.hp <= 0) triggerRoundEnd('p1');
+              continue;
+            }
+
+            if (b.bounces > 3) gs.bullets.splice(i, 1);
+          }
+        }
+      }
+
+      // ----------------------------
+      // GAME 2: PONG PHYSICS
+      // ----------------------------
+      else if (gameType === 'pong') {
+        const paddleSpeed = 6;
+        if (isHost) {
+          if (keys.up) gs.p1Y = Math.max(10, (gs.p1Y || 200) - paddleSpeed);
+          if (keys.down) gs.p1Y = Math.min(canvas.height - 90, (gs.p1Y || 200) + paddleSpeed);
+        } else {
+          if (keys.up) gs.p2Y = Math.max(10, (gs.p2Y || 200) - paddleSpeed);
+          if (keys.down) gs.p2Y = Math.min(canvas.height - 90, (gs.p2Y || 200) + paddleSpeed);
+        }
+
+        // Host handles ball physics
+        if (isHost && gs.ball) {
+          const b = gs.ball;
+          b.x += b.vx;
+          b.y += b.vy;
+
+          // Wall bounces
+          if (b.y <= 10 || b.y >= canvas.height - 10) {
+            b.vy *= -1;
+            audioSFX.playHit();
+          }
+
+          // Paddle P1 hit (Left)
+          if (b.x <= 35 && b.y >= gs.p1Y && b.y <= gs.p1Y + 80) {
+            b.vx = Math.abs(b.vx) * 1.05;
+            b.x = 36;
+            audioSFX.playShoot();
+          }
+
+          // Paddle P2 hit (Right)
+          if (b.x >= canvas.width - 35 && b.y >= gs.p2Y && b.y <= gs.p2Y + 80) {
+            b.vx = -Math.abs(b.vx) * 1.05;
+            b.x = canvas.width - 36;
+            audioSFX.playShoot();
+          }
+
+          // Goals
+          if (b.x < 0) {
+            roomState.scores.p2 = (roomState.scores.p2 || 0) + 1;
+            resetPongBall(-1);
+            if (roomState.scores.p2 >= 5) triggerRoundEnd('p2');
+          } else if (b.x > canvas.width) {
+            roomState.scores.p1 = (roomState.scores.p1 || 0) + 1;
+            resetPongBall(1);
+            if (roomState.scores.p1 >= 5) triggerRoundEnd('p1');
+          }
+        }
+      }
+
+      // ----------------------------
+      // GAME 3: PLATFORM RACE
+      // ----------------------------
+      else if (gameType === 'race') {
+        const playerKey = isHost ? 'p1' : 'p2';
+        const p = gs[playerKey];
+        if (!p) return;
+
+        const moveSpeed = 4;
+        const gravity = 0.45;
+
+        if (keys.left) p.x = Math.max(15, p.x - moveSpeed);
+        if (keys.right) p.x = Math.min(canvas.width - 15, p.x + moveSpeed);
+
+        // Jump
+        if (keys.action && p.isGrounded) {
+          p.vy = -10.5;
+          p.isGrounded = false;
+          audioSFX.playJump();
+        }
+
+        // Apply gravity
+        p.vy = (p.vy || 0) + gravity;
+        p.y += p.vy;
+
+        // Platform collision checks
+        const platforms = [
+          { x: 0, y: 410, w: 800, h: 40 },
+          { x: 100, y: 320, w: 180, h: 15 },
+          { x: 340, y: 260, w: 150, h: 15 },
+          { x: 550, y: 320, w: 180, h: 15 },
+          { x: 200, y: 170, w: 200, h: 15 },
+          { x: 480, y: 130, w: 180, h: 15 },
+          { x: 350, y: 70, w: 100, h: 15 } // Goal platform
+        ];
+
+        p.isGrounded = false;
+        for (let plat of platforms) {
+          if (p.x >= plat.x - 10 && p.x <= plat.x + plat.w + 10) {
+            if (p.y + 20 >= plat.y && p.y + 20 <= plat.y + 15 && p.vy >= 0) {
+              p.y = plat.y - 20;
+              p.vy = 0;
+              p.isGrounded = true;
+            }
+          }
+        }
+
+        // Crown victory condition
+        if (p.y <= 70 && p.x >= 350 && p.x <= 450) {
+          triggerRoundEnd(playerKey);
+        }
+      }
+    }
+
+    function resetPongBall(dir) {
+      if (roomState && roomState.gameState) {
+        roomState.gameState.ball = { x: 400, y: 225, vx: 5 * dir, vy: (Math.random() - 0.5) * 6 };
+      }
+    }
+
+    function triggerRoundEnd(winnerKey) {
+      if (!currentRoomId || !isHost) return;
+      audioSFX.playWin();
+
+      const winnerName = winnerKey === 'p1' ? (roomState.hostName || "Player 1") : (roomState.guestName || "Player 2");
+      const currentScores = roomState.scores || { p1: 0, p2: 0 };
+      if (winnerKey === 'p1') currentScores.p1++;
+      if (winnerKey === 'p2') currentScores.p2++;
+
+      updateDoc(getRoomRef(currentRoomId), {
+        scores: currentScores,
+        'gameState.winner': winnerName
+      });
+    }
+
+    // Network Sync
+    async function syncGameStateToNetwork() {
+      if (!currentRoomId || !roomState) return;
+      try {
+        await updateDoc(getRoomRef(currentRoomId), {
+          gameState: roomState.gameState,
+          scores: roomState.scores || { p1: 0, p2: 0 }
+        });
+      } catch (err) {
+        // Silently catch sync throttles
+      }
+    }
+
+    // ------------------------------------------
+    // RENDERING PIPELINE
+    // ------------------------------------------
+    function renderCanvas() {
+      // Clear screen
+      ctx.fillStyle = '#090d16';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      if (!roomState || !roomState.gameState) return;
+      const gs = roomState.gameState;
+      const gameType = roomState.selectedGame || 'tanks';
+
+      // Overlay checks
+      if (gs.winner) {
+        overlayTitle.textContent = "ROUND OVER!";
+        overlayMsg.textContent = `${gs.winner} WINS THE MATCH! 🎉`;
+        gameOverlay.classList.remove('hidden');
+      }
+
+      // --- GAME 1 RENDER: TANKS ---
+      if (gameType === 'tanks') {
+        // Draw grid lines
+        ctx.strokeStyle = '#1e293b';
+        ctx.lineWidth = 1;
+        for (let x = 0; x < canvas.width; x += 40) {
+          ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, canvas.height); ctx.stroke();
+        }
+        for (let y = 0; y < canvas.height; y += 40) {
+          ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(canvas.width, y); ctx.stroke();
+        }
+
+        // Draw Bullets
+        if (gs.bullets) {
+          for (let b of gs.bullets) {
+            ctx.fillStyle = b.owner === 'p1' ? '#22d3ee' : '#f472b6';
+            ctx.shadowColor = b.owner === 'p1' ? '#22d3ee' : '#f472b6';
+            ctx.shadowBlur = 10;
+            ctx.beginPath();
+            ctx.arc(b.x, b.y, 5, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.shadowBlur = 0;
+          }
+        }
+
+        // Draw Tank P1 (Cyan)
+        if (gs.p1) drawTank(gs.p1.x, gs.p1.y, gs.p1.angle, '#06b6d4', '#22d3ee', gs.p1.hp || 3);
+        // Draw Tank P2 (Pink)
+        if (gs.p2) drawTank(gs.p2.x, gs.p2.y, gs.p2.angle, '#db2777', '#f472b6', gs.p2.hp || 3);
+      }
+
+      // --- GAME 2 RENDER: PONG ---
+      else if (gameType === 'pong') {
+        // Draw center dashed line
+        ctx.strokeStyle = '#334155';
+        ctx.lineWidth = 3;
+        ctx.setLineDash([10, 10]);
+        ctx.beginPath();
+        ctx.moveTo(canvas.width / 2, 0);
+        ctx.lineTo(canvas.width / 2, canvas.height);
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        // Paddles
+        ctx.fillStyle = '#06b6d4';
+        ctx.shadowColor = '#06b6d4';
+        ctx.shadowBlur = 12;
+        ctx.fillRect(20, gs.p1Y || 200, 15, 80);
+
+        ctx.fillStyle = '#ec4899';
+        ctx.shadowColor = '#ec4899';
+        ctx.shadowBlur = 12;
+        ctx.fillRect(canvas.width - 35, gs.p2Y || 200, 15, 80);
+
+        // Ball
+        if (gs.ball) {
+          ctx.fillStyle = '#facc15';
+          ctx.shadowColor = '#facc15';
+          ctx.shadowBlur = 15;
+          ctx.beginPath();
+          ctx.arc(gs.ball.x, gs.ball.y, 9, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        ctx.shadowBlur = 0;
+      }
+
+      // --- GAME 3 RENDER: PLATFORM RACE ---
+      else if (gameType === 'race') {
+        // Draw Platforms
+        const platforms = [
+          { x: 0, y: 410, w: 800, h: 40 },
+          { x: 100, y: 320, w: 180, h: 15 },
+          { x: 340, y: 260, w: 150, h: 15 },
+          { x: 550, y: 320, w: 180, h: 15 },
+          { x: 200, y: 170, w: 200, h: 15 },
+          { x: 480, y: 130, w: 180, h: 15 },
+          { x: 350, y: 70, w: 100, h: 15 }
+        ];
+
+        ctx.fillStyle = '#1e293b';
+        ctx.strokeStyle = '#3b82f6';
+        ctx.lineWidth = 2;
+        for (let plat of platforms) {
+          ctx.fillRect(plat.x, plat.y, plat.w, plat.h);
+          ctx.strokeRect(plat.x, plat.y, plat.w, plat.h);
+        }
+
+        // Draw Crown at Top Platform
+        ctx.font = '24px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('👑', 400, 60);
+
+        // Draw Runners
+        if (gs.p1) drawRunner(gs.p1.x, gs.p1.y, '#06b6d4', 'P1');
+        if (gs.p2) drawRunner(gs.p2.x, gs.p2.y, '#ec4899', 'P2');
+      }
+    }
+
+    // Helper: Tank Drawing
+    function drawTank(x, y, angle, baseColor, accentColor, hp) {
+      ctx.save();
+      ctx.translate(x, y);
+
+      // Health Hearts
+      ctx.font = '10px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillStyle = '#ef4444';
+      ctx.fillText('❤️'.repeat(hp), 0, -25);
+
+      ctx.rotate(angle);
+
+      // Body
+      ctx.fillStyle = baseColor;
+      ctx.fillRect(-18, -14, 36, 28);
+
+      // Turret Barrel
+      ctx.fillStyle = accentColor;
+      ctx.fillRect(0, -4, 24, 8);
+
+      // Center Hatch
+      ctx.beginPath();
+      ctx.arc(0, 0, 8, 0, Math.PI * 2);
+      ctx.fillStyle = '#0f172a';
+      ctx.fill();
+      ctx.strokeStyle = accentColor;
+      ctx.lineWidth = 2;
+      ctx.stroke();
+
+      ctx.restore();
+    }
+
+    // Helper: Runner Drawing
+    function drawRunner(x, y, color, label) {
+      ctx.save();
+      ctx.fillStyle = color;
+      ctx.shadowColor = color;
+      ctx.shadowBlur = 10;
+
+      // Character body
+      ctx.fillRect(x - 12, y - 20, 24, 24);
+
+      // Label
+      ctx.shadowBlur = 0;
+      ctx.fillStyle = '#ffffff';
+      ctx.font = 'bold 10px Orbitron';
+      ctx.textAlign = 'center';
+      ctx.fillText(label, x, y - 24);
+
+      ctx.restore();
+    }
+  </script>
+</body>
+</html>
