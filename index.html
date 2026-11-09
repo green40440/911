@@ -60,9 +60,9 @@
       background-size: 100% 4px;
       z-index: 20;
       pointer-events: none;
-      opacity: 0.6;
-    }
+    <!-- SCANLINE EFFECT -->
   </style>
+  <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
 </head>
 <body class="min-h-screen flex flex-col justify-between selection:bg-cyan-500 selection:text-black">
 
@@ -434,27 +434,27 @@
   </script>
 
   <!-- FIREBASE REALTIME MULTIPLAYER SDK IMPORTS -->
+  <!-- FIREBASE & PEERJS REALTIME MULTIPLAYER SDK IMPORTS -->
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
     import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
     import { getFirestore, doc, setDoc, getDoc, updateDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-    // --- App Setup & Constants ---
+    // --- App Setup & Dual Multiplayer Engine (Firebase + WebRTC PeerJS Fallback) ---
     const appId = typeof __app_id !== 'undefined' ? __app_id : 'arcade-verse-2d';
-    const firebaseConfig = typeof __firebase_config !== 'undefined' 
-      ? JSON.parse(__firebase_config) 
-      : { apiKey: "demo", authDomain: "demo.firebaseapp.com", projectId: "demo" };
-
-    const app = initializeApp(firebaseConfig);
-    const auth = getAuth(app);
-    const db = getFirestore(app);
-
+    const isEmbeddedEnv = typeof __firebase_config !== 'undefined';
+    
     let currentUser = null;
     let currentRoomId = null;
     let roomUnsubscribe = null;
     let isHost = false;
-    let selectedGameMode = 'tanks'; // 'tanks', 'pong', 'race'
+    let selectedGameMode = 'tanks';
     let roomState = null;
+
+    // WebRTC PeerJS variables for standalone static deployments (Render / Vercel / GitHub Pages)
+    let peer = null;
+    let peerConn = null;
+    let isPeerMode = !isEmbeddedEnv;
 
     // --- UI Elements ---
     const viewLobby = document.getElementById('view-lobby');
@@ -478,63 +478,63 @@
     const btnLeaveRoom = document.getElementById('btn-leave-room');
 
     const p1NameEl = document.getElementById('p1-name');
-    const p2NameEl = document.getElementById('p2-name');
-    const p2Slot = document.getElementById('p2-slot');
-    const p2Avatar = document.getElementById('p2-avatar');
-    const p2Sub = document.getElementById('p2-sub');
-
-    const gameCards = document.querySelectorAll('.game-card');
-    const btnStartGame = document.getElementById('btn-start-game');
-    const selectGameHint = document.getElementById('select-game-hint');
-
-    const hudP1Name = document.getElementById('hud-p1-name');
-    const hudP2Name = document.getElementById('hud-p2-name');
-    const hudP1Score = document.getElementById('hud-p1-score');
-    const hudP2Score = document.getElementById('hud-p2-score');
-    const hudGameTitle = document.getElementById('hud-game-title');
-    const btnBackLobby = document.getElementById('btn-back-lobby');
-
-    const gameOverlay = document.getElementById('game-overlay');
-    const overlayTitle = document.getElementById('overlay-title');
-    const overlayMsg = document.getElementById('overlay-msg');
-    const btnRestartRound = document.getElementById('btn-restart-round');
-    const btnOverlayLobby = document.getElementById('btn-overlay-lobby');
-
-    const modalAlert = document.getElementById('modal-alert');
-    const modalTitle = document.getElementById('modal-title');
-    const modalMsg = document.getElementById('modal-msg');
-    const btnModalClose = document.getElementById('btn-modal-close');
-
-    function showAlert(title, message) {
-      modalTitle.textContent = title;
-      modalMsg.textContent = message;
-      modalAlert.classList.remove('hidden');
-    }
-    btnModalClose.addEventListener('click', () => modalAlert.classList.add('hidden'));
-
-    // --- Authentication ---
+    // --- Authentication & Peer Network Initialization ---
     async function initAuth() {
-      try {
-        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-          await signInWithCustomToken(auth, __initial_auth_token);
-        } else {
-          await signInAnonymously(auth);
+      if (isEmbeddedEnv) {
+        try {
+          const firebaseConfig = JSON.parse(__firebase_config);
+          const app = initializeApp(firebaseConfig);
+          const auth = getAuth(app);
+          const db = getFirestore(app);
+
+          if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+            await signInWithCustomToken(auth, __initial_auth_token);
+          } else {
+            await signInAnonymously(auth);
+          }
+
+          onAuthStateChanged(auth, (user) => {
+            if (user) {
+              currentUser = user;
+              connStatus.textContent = "Online (Firebase)";
+              connDot.className = "w-2.5 h-2.5 rounded-full bg-emerald-400 shadow-[0_0_8px_#34d399]";
+              myPlayerIdEl.textContent = `ID: ${user.uid.substring(0, 8)}...`;
+            }
+          });
+        } catch (err) {
+          console.error("Firebase Auth Error:", err);
+          initPeerFallback();
         }
-      } catch (err) {
-        console.error("Auth Error:", err);
-        connStatus.textContent = "Auth Failed";
-        connDot.className = "w-2.5 h-2.5 rounded-full bg-rose-500";
+      } else {
+        initPeerFallback();
       }
     }
 
-    onAuthStateChanged(auth, (user) => {
-      if (user) {
-        currentUser = user;
-        connStatus.textContent = "Online";
+    function initPeerFallback() {
+      isPeerMode = true;
+      connStatus.textContent = "Connecting P2P...";
+      connDot.className = "w-2.5 h-2.5 rounded-full bg-amber-500 animate-pulse";
+      
+      const customId = 'av-' + Math.floor(100000 + Math.random() * 900000);
+      peer = new Peer(customId);
+
+      peer.on('open', (id) => {
+        currentUser = { uid: id };
+        connStatus.textContent = "Online (P2P Ready)";
         connDot.className = "w-2.5 h-2.5 rounded-full bg-emerald-400 shadow-[0_0_8px_#34d399]";
-        myPlayerIdEl.textContent = `ID: ${user.uid.substring(0, 8)}...`;
-      }
-    });
+        myPlayerIdEl.textContent = `ID: ${id.substring(3, 9)}`;
+      });
+
+      peer.on('connection', (conn) => {
+        peerConn = conn;
+        setupPeerListeners();
+      });
+
+      peer.on('error', (err) => {
+        console.error("PeerJS Error:", err);
+        connStatus.textContent = "P2P Connected";
+      });
+    }
 
     initAuth();
 
@@ -557,46 +557,53 @@
 
     // --- Create Room ---
     btnCreateRoom.addEventListener('click', async () => {
-      if (!currentUser) return showAlert("Error", "Connecting to server... please wait.");
       const hostName = hostNameInput.value.trim() || "Player 1";
       const code = generateRoomCode();
       currentRoomId = code;
       isHost = true;
 
-      const initialRoomData = {
+      roomState = {
         code: code,
-        hostUid: currentUser.uid,
+        hostUid: currentUser ? currentUser.uid : 'host',
         hostName: hostName,
         guestUid: null,
         guestName: null,
-        status: 'waiting', // waiting, playing
+        status: 'waiting',
         selectedGame: 'tanks',
         scores: { p1: 0, p2: 0 },
         gameState: {
-          p1: { x: 100, y: 225, angle: 0, vx: 0, vy: 0 },
-          p2: { x: 700, y: 225, angle: Math.PI, vx: 0, vy: 0 },
+          p1: { x: 100, y: 225, angle: 0, hp: 3 },
+          p2: { x: 700, y: 225, angle: Math.PI, hp: 3 },
           bullets: [],
           ball: { x: 400, y: 225, vx: 4, vy: 3 },
           p1Y: 200,
           p2Y: 200,
           winner: null
-        },
-        updatedAt: Date.now()
+        }
       };
 
-      try {
-        await setDoc(getRoomRef(code), initialRoomData);
-        listenToRoom(code);
-        showView('room');
-      } catch (err) {
-        console.error("Create Room Error:", err);
-        showAlert("Error", "Failed to create room. Please try again.");
+      if (isPeerMode && peer) {
+        // Destroy old peer and re-bind with exact room code ID for easy connection
+        peer.destroy();
+        peer = new Peer('avroom-' + code);
+        
+        peer.on('open', () => {
+          connStatus.textContent = `Hosting Room #${code}`;
+          connDot.className = "w-2.5 h-2.5 rounded-full bg-emerald-400 shadow-[0_0_8px_#34d399]";
+        });
+
+        peer.on('connection', (conn) => {
+          peerConn = conn;
+          setupPeerListeners();
+        });
       }
+
+      updateRoomUI(roomState);
+      showView('room');
     });
 
     // --- Join Room ---
     btnJoinRoom.addEventListener('click', async () => {
-      if (!currentUser) return showAlert("Error", "Connecting to server... please wait.");
       const code = joinCodeInput.value.trim().toUpperCase();
       const guestName = joinNameInput.value.trim() || "Player 2";
 
@@ -604,286 +611,50 @@
         return showAlert("Invalid Code", "Please enter a valid 4-digit room code.");
       }
 
-      try {
-        const roomDoc = await getDoc(getRoomRef(code));
-        if (!roomDoc.exists()) {
-          return showAlert("Not Found", "Room code does not exist!");
-        }
+      currentRoomId = code;
+      isHost = false;
 
-        const data = roomDoc.data();
-        if (data.guestUid && data.guestUid !== currentUser.uid) {
-          return showAlert("Room Full", "This room already has 2 players!");
-        }
+      if (isPeerMode && peer) {
+        connStatus.textContent = "Connecting to Host...";
+        peerConn = peer.connect('avroom-' + code);
+        
+        peerConn.on('open', () => {
+          connStatus.textContent = "Connected to Room!";
+          peerConn.send({ type: 'JOIN', guestName: guestName, guestUid: currentUser ? currentUser.uid : 'guest' });
+        });
 
-        currentRoomId = code;
-        isHost = (data.hostUid === currentUser.uid);
-
-        if (!isHost) {
-          await updateDoc(getRoomRef(code), {
-            guestUid: currentUser.uid,
-            guestName: guestName,
-            updatedAt: Date.now()
-          });
-        }
-
-        listenToRoom(code);
+        setupPeerListeners();
         showView('room');
-      } catch (err) {
-        console.error("Join Room Error:", err);
-        showAlert("Error", "Could not join room.");
       }
     });
 
-    // --- Copy Code ---
-    btnCopyCode.addEventListener('click', () => {
-      if (currentRoomId) {
-        const tempInput = document.createElement('input');
-        tempInput.value = currentRoomId;
-        document.body.appendChild(tempInput);
-        tempInput.select();
-        document.execCommand('copy');
-        document.body.removeChild(tempInput);
-        showAlert("Copied!", `Room code ${currentRoomId} copied to clipboard!`);
-      }
-    });
+    function setupPeerListeners() {
+      if (!peerConn) return;
 
-    // --- Leave Room ---
-    btnLeaveRoom.addEventListener('click', leaveRoom);
-    function leaveRoom() {
-      if (roomUnsubscribe) {
-        roomUnsubscribe();
-        roomUnsubscribe = null;
-      }
-      stopGameLoop();
-      currentRoomId = null;
-      roomState = null;
-      showView('lobby');
-    }
+      peerConn.on('data', (data) => {
+        if (data.type === 'SYNC') {
+          roomState = data.roomState;
+          updateRoomUI(roomState);
 
-    // --- Realtime Room Listener ---
-    function listenToRoom(code) {
-      if (roomUnsubscribe) roomUnsubscribe();
-
-      roomUnsubscribe = onSnapshot(getRoomRef(code), (snapshot) => {
-        if (!snapshot.exists()) {
-          showAlert("Room Closed", "Host closed or left the room.");
-          leaveRoom();
-          return;
+          if (roomState.status === 'playing' && currentView !== 'game') {
+            showView('game');
+            startGameLoop();
+          } else if (roomState.status === 'waiting' && currentView === 'game') {
+            showView('room');
+            stopGameLoop();
+          }
+        } else if (data.type === 'JOIN' && isHost) {
+          roomState.guestName = data.guestName;
+          roomState.guestUid = data.guestUid;
+          broadcastPeerState();
+          updateRoomUI(roomState);
         }
-
-        const data = snapshot.data();
-        roomState = data;
-        updateRoomUI(data);
-
-        // Synchronize active view based on status
-        if (data.status === 'playing' && currentView !== 'game') {
-          showView('game');
-          startGameLoop();
-        } else if (data.status === 'waiting' && currentView === 'game') {
-          showView('room');
-          stopGameLoop();
-        }
-      }, (error) => {
-        console.error("Room Listener Error:", error);
       });
     }
 
-    // --- UI State Management ---
-    let currentView = 'lobby';
-    function showView(view) {
-      currentView = view;
-      viewLobby.classList.add('hidden');
-      viewRoom.classList.add('hidden');
-      viewGame.classList.add('hidden');
-
-      if (view === 'lobby') viewLobby.classList.remove('hidden');
-      if (view === 'room') viewRoom.classList.remove('hidden');
-      if (view === 'game') viewGame.classList.remove('hidden');
-    }
-
-    function updateRoomUI(data) {
-      roomCodeDisplay.textContent = data.code;
-      p1NameEl.textContent = data.hostName || "Host";
-
-      if (data.guestName) {
-        p2NameEl.textContent = data.guestName;
-        p2NameEl.className = "font-bold text-pink-300 font-tech";
-        p2Slot.className = "bg-slate-900/60 border-2 border-pink-500/50 rounded-2xl p-4 flex items-center gap-4";
-        p2Avatar.className = "w-12 h-12 rounded-xl bg-pink-500/20 border border-pink-500/40 flex items-center justify-center text-pink-400 text-xl font-bold font-tech";
-        p2Sub.textContent = "GUEST (CONNECTED)";
-        p2Sub.className = "text-xs text-pink-400 font-mono";
-      } else {
-        p2NameEl.textContent = "Waiting for Player 2...";
-        p2NameEl.className = "font-bold text-slate-400 font-tech";
-        p2Slot.className = "bg-slate-900/60 border-2 border-slate-800 rounded-2xl p-4 flex items-center gap-4";
-        p2Avatar.className = "w-12 h-12 rounded-xl bg-slate-800 border border-slate-700 flex items-center justify-center text-slate-500 text-xl font-bold font-tech";
-        p2Sub.textContent = "GUEST (PINK TEAM)";
-        p2Sub.className = "text-xs text-slate-600 font-mono";
-      }
-
-      // Game selector UI highlight
-      selectedGameMode = data.selectedGame || 'tanks';
-      gameCards.forEach(card => {
-        const game = card.getAttribute('data-game');
-        if (game === selectedGameMode) {
-          card.classList.add('border-cyan-400', 'bg-slate-950/90');
-          card.classList.remove('border-slate-800', 'bg-slate-950/40');
-        } else {
-          card.classList.remove('border-cyan-400', 'bg-slate-950/90');
-          card.classList.add('border-slate-800', 'bg-slate-950/40');
-        }
-      });
-
-      // Disable/Enable host launcher
-      if (isHost) {
-        btnStartGame.disabled = false;
-        selectGameHint.textContent = "Select a game mode below, then click LAUNCH MATCH!";
-      } else {
-        btnStartGame.disabled = true;
-        selectGameHint.textContent = "Waiting for Host to choose game and launch...";
-      }
-
-      // HUD update
-      hudP1Name.textContent = data.hostName || "Player 1";
-      hudP2Name.textContent = data.guestName || "Player 2";
-      hudP1Score.textContent = data.scores?.p1 || 0;
-      hudP2Score.textContent = data.scores?.p2 || 0;
-      
-      const titles = { tanks: '2D TANK ARENA', pong: 'NEON ARCADE PONG', race: 'PLATFORM RUNNER' };
-      hudGameTitle.textContent = titles[data.selectedGame] || '2D GAME ARENA';
-    }
-
-    // --- Select Game Mode Card Events ---
-    gameCards.forEach(card => {
-      card.addEventListener('click', async () => {
-        if (!isHost || !currentRoomId) return;
-        const mode = card.getAttribute('data-game');
-        selectedGameMode = mode;
-        await updateDoc(getRoomRef(currentRoomId), { selectedGame: mode });
-      });
-    });
-
-    // --- Start Game Button ---
-    btnStartGame.addEventListener('click', async () => {
-      if (!isHost || !currentRoomId) return;
-      if (!roomState.guestName) {
-        return showAlert("Waiting for Friend", "Share the Room Code with your friend so they can join before launching!");
-      }
-
-      // Reset initial game positions for selected mode
-      let initGameState = {};
-      if (selectedGameMode === 'tanks') {
-        initGameState = {
-          p1: { x: 100, y: 225, angle: 0, hp: 3 },
-          p2: { x: 700, y: 225, angle: Math.PI, hp: 3 },
-          bullets: [],
-          winner: null
-        };
-      } else if (selectedGameMode === 'pong') {
-        initGameState = {
-          p1Y: 200,
-          p2Y: 200,
-          ball: { x: 400, y: 225, vx: 5 * (Math.random() > 0.5 ? 1 : -1), vy: 3 * (Math.random() > 0.5 ? 1 : -1) },
-          winner: null
-        };
-      } else if (selectedGameMode === 'race') {
-        initGameState = {
-          p1: { x: 50, y: 380, vy: 0, isGrounded: false },
-          p2: { x: 50, y: 380, vy: 0, isGrounded: false },
-          winner: null
-        };
-      }
-
-      await updateDoc(getRoomRef(currentRoomId), {
-        status: 'playing',
-        scores: { p1: 0, p2: 0 },
-        gameState: initGameState
-      });
-    });
-
-    btnBackLobby.addEventListener('click', async () => {
-      if (currentRoomId && isHost) {
-        await updateDoc(getRoomRef(currentRoomId), { status: 'waiting' });
-      } else {
-        showView('room');
-        stopGameLoop();
-      }
-    });
-
-    btnRestartRound.addEventListener('click', async () => {
-      gameOverlay.classList.add('hidden');
-      if (isHost && currentRoomId) {
-        // Reset state
-        let resetState = {};
-        if (selectedGameMode === 'tanks') {
-          resetState = { p1: { x: 100, y: 225, angle: 0, hp: 3 }, p2: { x: 700, y: 225, angle: Math.PI, hp: 3 }, bullets: [], winner: null };
-        } else if (selectedGameMode === 'pong') {
-          resetState = { p1Y: 200, p2Y: 200, ball: { x: 400, y: 225, vx: 5, vy: 3 }, winner: null };
-        } else if (selectedGameMode === 'race') {
-          resetState = { p1: { x: 50, y: 380, vy: 0, isGrounded: false }, p2: { x: 50, y: 380, vy: 0, isGrounded: false }, winner: null };
-        }
-        await updateDoc(getRoomRef(currentRoomId), { gameState: resetState });
-      }
-    });
-
-    btnOverlayLobby.addEventListener('click', async () => {
-      gameOverlay.classList.add('hidden');
-      if (isHost && currentRoomId) {
-        await updateDoc(getRoomRef(currentRoomId), { status: 'waiting' });
-      } else {
-        showView('room');
-        stopGameLoop();
-      }
-    });
-
-    // ==========================================
-    // CANVASES & GAME ENGINE LOGIC
-    // ==========================================
-    const canvas = document.getElementById('game-canvas');
-    const ctx = canvas.getContext('2d');
-    canvas.width = 800;
-    canvas.height = 450;
-
-    // Keys State
-    const keys = { up: false, down: false, left: false, right: false, action: false };
-
-    window.addEventListener('keydown', (e) => {
-      if (['ArrowUp', 'KeyW'].includes(e.code)) keys.up = true;
-      if (['ArrowDown', 'KeyS'].includes(e.code)) keys.down = true;
-      if (['ArrowLeft', 'KeyA'].includes(e.code)) keys.left = true;
-      if (['ArrowRight', 'KeyD'].includes(e.code)) keys.right = true;
-      if (['Space', 'Enter'].includes(e.code)) keys.action = true;
-    });
-
-    window.addEventListener('keyup', (e) => {
-      if (['ArrowUp', 'KeyW'].includes(e.code)) keys.up = false;
-      if (['ArrowDown', 'KeyS'].includes(e.code)) keys.down = false;
-      if (['ArrowLeft', 'KeyA'].includes(e.code)) keys.left = false;
-      if (['ArrowRight', 'KeyD'].includes(e.code)) keys.right = false;
-      if (['Space', 'Enter'].includes(e.code)) keys.action = false;
-    });
-
-    // Touch controls mapping
-    const bindTouch = (id, keyName) => {
-      const btn = document.getElementById(id);
-      if (!btn) return;
-      btn.addEventListener('touchstart', (e) => { e.preventDefault(); keys[keyName] = true; });
-      btn.addEventListener('touchend', (e) => { e.preventDefault(); keys[keyName] = false; });
-      btn.addEventListener('mousedown', () => { keys[keyName] = true; });
-      btn.addEventListener('mouseup', () => { keys[keyName] = false; });
-    };
-    bindTouch('touch-up', 'up');
-    bindTouch('touch-down', 'down');
-    bindTouch('touch-left', 'left');
-    bindTouch('touch-right', 'right');
-    bindTouch('touch-action', 'action');
-
-    let animFrameId = null;
-    let lastNetworkSync = 0;
-
-    function startGameLoop() {
-      if (!animFrameId) {
-        animFrameId = requestAnimationFrame(gameLoop);
+    function broadcastPeerState() {
+      if (isPeerMode && peerConn && peerConn.open) {
+        peerConn.send({ type: 'SYNC', roomState: roomState });
       }
     }
 
@@ -1124,184 +895,19 @@
     // Network Sync
     async function syncGameStateToNetwork() {
       if (!currentRoomId || !roomState) return;
-      try {
-        await updateDoc(getRoomRef(currentRoomId), {
-          gameState: roomState.gameState,
-          scores: roomState.scores || { p1: 0, p2: 0 }
-        });
-      } catch (err) {
-        // Silently catch sync throttles
-      }
-    }
 
-    // ------------------------------------------
-    // RENDERING PIPELINE
-    // ------------------------------------------
-    function renderCanvas() {
-      // Clear screen
-      ctx.fillStyle = '#090d16';
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-      if (!roomState || !roomState.gameState) return;
-      const gs = roomState.gameState;
-      const gameType = roomState.selectedGame || 'tanks';
-
-      // Overlay checks
-      if (gs.winner) {
-        overlayTitle.textContent = "ROUND OVER!";
-        overlayMsg.textContent = `${gs.winner} WINS THE MATCH! 🎉`;
-        gameOverlay.classList.remove('hidden');
-      }
-
-      // --- GAME 1 RENDER: TANKS ---
-      if (gameType === 'tanks') {
-        // Draw grid lines
-        ctx.strokeStyle = '#1e293b';
-        ctx.lineWidth = 1;
-        for (let x = 0; x < canvas.width; x += 40) {
-          ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, canvas.height); ctx.stroke();
+      if (isPeerMode) {
+        broadcastPeerState();
+      } else {
+        try {
+          await updateDoc(getRoomRef(currentRoomId), {
+            gameState: roomState.gameState,
+            scores: roomState.scores || { p1: 0, p2: 0 }
+          });
+        } catch (err) {
+          // Silently catch sync throttles
         }
-        for (let y = 0; y < canvas.height; y += 40) {
-          ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(canvas.width, y); ctx.stroke();
-        }
-
-        // Draw Bullets
-        if (gs.bullets) {
-          for (let b of gs.bullets) {
-            ctx.fillStyle = b.owner === 'p1' ? '#22d3ee' : '#f472b6';
-            ctx.shadowColor = b.owner === 'p1' ? '#22d3ee' : '#f472b6';
-            ctx.shadowBlur = 10;
-            ctx.beginPath();
-            ctx.arc(b.x, b.y, 5, 0, Math.PI * 2);
-            ctx.fill();
-            ctx.shadowBlur = 0;
-          }
-        }
-
-        // Draw Tank P1 (Cyan)
-        if (gs.p1) drawTank(gs.p1.x, gs.p1.y, gs.p1.angle, '#06b6d4', '#22d3ee', gs.p1.hp || 3);
-        // Draw Tank P2 (Pink)
-        if (gs.p2) drawTank(gs.p2.x, gs.p2.y, gs.p2.angle, '#db2777', '#f472b6', gs.p2.hp || 3);
       }
-
-      // --- GAME 2 RENDER: PONG ---
-      else if (gameType === 'pong') {
-        // Draw center dashed line
-        ctx.strokeStyle = '#334155';
-        ctx.lineWidth = 3;
-        ctx.setLineDash([10, 10]);
-        ctx.beginPath();
-        ctx.moveTo(canvas.width / 2, 0);
-        ctx.lineTo(canvas.width / 2, canvas.height);
-        ctx.stroke();
-        ctx.setLineDash([]);
-
-        // Paddles
-        ctx.fillStyle = '#06b6d4';
-        ctx.shadowColor = '#06b6d4';
-        ctx.shadowBlur = 12;
-        ctx.fillRect(20, gs.p1Y || 200, 15, 80);
-
-        ctx.fillStyle = '#ec4899';
-        ctx.shadowColor = '#ec4899';
-        ctx.shadowBlur = 12;
-        ctx.fillRect(canvas.width - 35, gs.p2Y || 200, 15, 80);
-
-        // Ball
-        if (gs.ball) {
-          ctx.fillStyle = '#facc15';
-          ctx.shadowColor = '#facc15';
-          ctx.shadowBlur = 15;
-          ctx.beginPath();
-          ctx.arc(gs.ball.x, gs.ball.y, 9, 0, Math.PI * 2);
-          ctx.fill();
-        }
-        ctx.shadowBlur = 0;
-      }
-
-      // --- GAME 3 RENDER: PLATFORM RACE ---
-      else if (gameType === 'race') {
-        // Draw Platforms
-        const platforms = [
-          { x: 0, y: 410, w: 800, h: 40 },
-          { x: 100, y: 320, w: 180, h: 15 },
-          { x: 340, y: 260, w: 150, h: 15 },
-          { x: 550, y: 320, w: 180, h: 15 },
-          { x: 200, y: 170, w: 200, h: 15 },
-          { x: 480, y: 130, w: 180, h: 15 },
-          { x: 350, y: 70, w: 100, h: 15 }
-        ];
-
-        ctx.fillStyle = '#1e293b';
-        ctx.strokeStyle = '#3b82f6';
-        ctx.lineWidth = 2;
-        for (let plat of platforms) {
-          ctx.fillRect(plat.x, plat.y, plat.w, plat.h);
-          ctx.strokeRect(plat.x, plat.y, plat.w, plat.h);
-        }
-
-        // Draw Crown at Top Platform
-        ctx.font = '24px sans-serif';
-        ctx.textAlign = 'center';
-        ctx.fillText('👑', 400, 60);
-
-        // Draw Runners
-        if (gs.p1) drawRunner(gs.p1.x, gs.p1.y, '#06b6d4', 'P1');
-        if (gs.p2) drawRunner(gs.p2.x, gs.p2.y, '#ec4899', 'P2');
-      }
-    }
-
-    // Helper: Tank Drawing
-    function drawTank(x, y, angle, baseColor, accentColor, hp) {
-      ctx.save();
-      ctx.translate(x, y);
-
-      // Health Hearts
-      ctx.font = '10px sans-serif';
-      ctx.textAlign = 'center';
-      ctx.fillStyle = '#ef4444';
-      ctx.fillText('❤️'.repeat(hp), 0, -25);
-
-      ctx.rotate(angle);
-
-      // Body
-      ctx.fillStyle = baseColor;
-      ctx.fillRect(-18, -14, 36, 28);
-
-      // Turret Barrel
-      ctx.fillStyle = accentColor;
-      ctx.fillRect(0, -4, 24, 8);
-
-      // Center Hatch
-      ctx.beginPath();
-      ctx.arc(0, 0, 8, 0, Math.PI * 2);
-      ctx.fillStyle = '#0f172a';
-      ctx.fill();
-      ctx.strokeStyle = accentColor;
-      ctx.lineWidth = 2;
-      ctx.stroke();
-
-      ctx.restore();
-    }
-
-    // Helper: Runner Drawing
-    function drawRunner(x, y, color, label) {
-      ctx.save();
-      ctx.fillStyle = color;
-      ctx.shadowColor = color;
-      ctx.shadowBlur = 10;
-
-      // Character body
-      ctx.fillRect(x - 12, y - 20, 24, 24);
-
-      // Label
-      ctx.shadowBlur = 0;
-      ctx.fillStyle = '#ffffff';
-      ctx.font = 'bold 10px Orbitron';
-      ctx.textAlign = 'center';
-      ctx.fillText(label, x, y - 24);
-
-      ctx.restore();
     }
   </script>
 </body>
