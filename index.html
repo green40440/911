@@ -478,6 +478,308 @@
     const btnLeaveRoom = document.getElementById('btn-leave-room');
 
     const p1NameEl = document.getElementById('p1-name');
+    const p2NameEl = document.getElementById('p2-name');
+    const p2AvatarEl = document.getElementById('p2-avatar');
+    const p2SubEl = document.getElementById('p2-sub');
+    const btnStartGame = document.getElementById('btn-start-game');
+
+    const canvas = document.getElementById('game-canvas');
+    const ctx = canvas.getContext('2d');
+    canvas.width = 800;
+    canvas.height = 450;
+
+    const gameOverlay = document.getElementById('game-overlay');
+    const overlayTitle = document.getElementById('overlay-title');
+    const overlayMsg = document.getElementById('overlay-msg');
+    const btnRestartRound = document.getElementById('btn-restart-round');
+    const btnOverlayLobby = document.getElementById('btn-overlay-lobby');
+
+    const hudP1Name = document.getElementById('hud-p1-name');
+    const hudP2Name = document.getElementById('hud-p2-name');
+    const hudP1Score = document.getElementById('hud-p1-score');
+    const hudP2Score = document.getElementById('hud-p2-score');
+    const hudGameTitle = document.getElementById('hud-game-title');
+    const btnBackLobby = document.getElementById('btn-back-lobby');
+
+    const modalAlert = document.getElementById('modal-alert');
+    const modalTitle = document.getElementById('modal-title');
+    const modalMsg = document.getElementById('modal-msg');
+    const btnModalClose = document.getElementById('btn-modal-close');
+
+    let currentView = 'lobby';
+    let animFrameId = null;
+    let lastNetworkSync = 0;
+
+    // --- Key Input State & Mobile Touch Handler ---
+    const keys = { up: false, down: false, left: false, right: false, action: false };
+
+    window.addEventListener('keydown', (e) => {
+      if (['ArrowUp', 'KeyW'].includes(e.code)) keys.up = true;
+      if (['ArrowDown', 'KeyS'].includes(e.code)) keys.down = true;
+      if (['ArrowLeft', 'KeyA'].includes(e.code)) keys.left = true;
+      if (['ArrowRight', 'KeyD'].includes(e.code)) keys.right = true;
+      if (['Space', 'Enter'].includes(e.code)) keys.action = true;
+    });
+
+    window.addEventListener('keyup', (e) => {
+      if (['ArrowUp', 'KeyW'].includes(e.code)) keys.up = false;
+      if (['ArrowDown', 'KeyS'].includes(e.code)) keys.down = false;
+      if (['ArrowLeft', 'KeyA'].includes(e.code)) keys.left = false;
+      if (['ArrowRight', 'KeyD'].includes(e.code)) keys.right = false;
+      if (['Space', 'Enter'].includes(e.code)) keys.action = false;
+    });
+
+    const bindTouch = (id, keyName) => {
+      const el = document.getElementById(id);
+      if (!el) return;
+      el.addEventListener('touchstart', (e) => { e.preventDefault(); keys[keyName] = true; });
+      el.addEventListener('touchend', (e) => { e.preventDefault(); keys[keyName] = false; });
+    };
+    bindTouch('touch-up', 'up');
+    bindTouch('touch-down', 'down');
+    bindTouch('touch-left', 'left');
+    bindTouch('touch-right', 'right');
+    bindTouch('touch-action', 'action');
+
+    // --- View Navigation & Alerts ---
+    function showView(view) {
+      currentView = view;
+      viewLobby.classList.toggle('hidden', view !== 'lobby');
+      viewRoom.classList.toggle('hidden', view !== 'room');
+      viewGame.classList.toggle('hidden', view !== 'game');
+    }
+
+    function showAlert(title, message) {
+      modalTitle.textContent = title;
+      modalMsg.textContent = message;
+      modalAlert.classList.remove('hidden');
+    }
+
+    btnModalClose.addEventListener('click', () => {
+      modalAlert.classList.add('hidden');
+    });
+
+    function updateRoomUI(state) {
+      if (!state) return;
+      roomCodeDisplay.textContent = state.code || '----';
+      p1NameEl.textContent = state.hostName || 'Player 1';
+
+      if (state.guestName) {
+        p2NameEl.textContent = state.guestName;
+        p2NameEl.className = "font-bold text-pink-400 font-tech";
+        p2AvatarEl.className = "w-12 h-12 rounded-xl bg-pink-500/20 border border-pink-500/40 flex items-center justify-center text-pink-400 text-xl font-bold font-tech";
+        p2SubEl.textContent = "CONNECTED (READY)";
+        p2SubEl.className = "text-xs text-pink-400 font-mono";
+      } else {
+        p2NameEl.textContent = "Waiting for Player 2...";
+        p2NameEl.className = "font-bold text-slate-400 font-tech";
+        p2AvatarEl.className = "w-12 h-12 rounded-xl bg-slate-800 border border-slate-700 flex items-center justify-center text-slate-500 text-xl font-bold font-tech";
+        p2SubEl.textContent = "GUEST (PINK TEAM)";
+        p2SubEl.className = "text-xs text-slate-600 font-mono";
+      }
+
+      btnStartGame.disabled = !isHost || !state.guestName;
+    }
+
+    btnCopyCode.addEventListener('click', () => {
+      if (currentRoomId) {
+        navigator.clipboard?.writeText(currentRoomId);
+        showAlert("Code Copied!", `Room Code ${currentRoomId} copied to clipboard.`);
+      }
+    });
+
+    btnLeaveRoom.addEventListener('click', () => {
+      stopGameLoop();
+      currentRoomId = null;
+      roomState = null;
+      showView('lobby');
+    });
+
+    // Game card selection
+    document.querySelectorAll('.game-card').forEach((card) => {
+      card.addEventListener('click', () => {
+        if (!isHost) return showAlert("Host Only", "Only the host can select game modes.");
+        document.querySelectorAll('.game-card').forEach((c) => {
+          c.classList.remove('border-cyan-500', 'border-pink-500', 'border-amber-500');
+          c.classList.add('border-slate-800');
+        });
+        const selected = card.getAttribute('data-game');
+        selectedGameMode = selected;
+        card.classList.remove('border-slate-800');
+        if (selected === 'tanks') card.classList.add('border-cyan-500');
+        if (selected === 'pong') card.classList.add('border-pink-500');
+        if (selected === 'race') card.classList.add('border-amber-500');
+
+        if (roomState) roomState.selectedGame = selected;
+      });
+    });
+
+    btnStartGame.addEventListener('click', () => {
+      if (!isHost) return;
+      if (roomState) {
+        roomState.status = 'playing';
+        broadcastPeerState();
+        showView('game');
+        startGameLoop();
+      }
+    });
+
+    btnBackLobby.addEventListener('click', () => {
+      if (roomState) {
+        roomState.status = 'waiting';
+        broadcastPeerState();
+      }
+      stopGameLoop();
+      showView('room');
+    });
+
+    btnOverlayLobby.addEventListener('click', () => {
+      gameOverlay.classList.add('hidden');
+      if (roomState) {
+        roomState.status = 'waiting';
+        broadcastPeerState();
+      }
+      stopGameLoop();
+      showView('room');
+    });
+
+    btnRestartRound.addEventListener('click', () => {
+      gameOverlay.classList.add('hidden');
+      if (roomState) {
+        roomState.gameState = {
+          p1: { x: 100, y: 225, angle: 0, hp: 3, isGrounded: false, vy: 0 },
+          p2: { x: 700, y: 225, angle: Math.PI, hp: 3, isGrounded: false, vy: 0 },
+          bullets: [],
+          ball: { x: 400, y: 225, vx: 4, vy: 3 },
+          p1Y: 200,
+          p2Y: 200,
+          winner: null
+        };
+        broadcastPeerState();
+      }
+    });
+
+    function startGameLoop() {
+      stopGameLoop();
+      animFrameId = requestAnimationFrame(gameLoop);
+    }
+
+    // Canvas Render Engine
+    function renderCanvas() {
+      ctx.fillStyle = '#0b0f19';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      if (!roomState || !roomState.gameState) return;
+      const gs = roomState.gameState;
+      const gameType = roomState.selectedGame || 'tanks';
+
+      // Update HUD
+      hudP1Name.textContent = roomState.hostName || 'Player 1';
+      hudP2Name.textContent = roomState.guestName || 'Player 2';
+      hudP1Score.textContent = roomState.scores ? roomState.scores.p1 : 0;
+      hudP2Score.textContent = roomState.scores ? roomState.scores.p2 : 0;
+      hudGameTitle.textContent = gameType === 'tanks' ? '2D TANK ARENA' : gameType === 'pong' ? 'NEON ARCADE PONG' : 'PLATFORM RUNNER';
+
+      if (gs.winner) {
+        overlayTitle.textContent = "ROUND OVER";
+        overlayMsg.textContent = `${gs.winner} takes the point!`;
+        gameOverlay.classList.remove('hidden');
+      } else {
+        gameOverlay.classList.add('hidden');
+      }
+
+      // Render 2D Tanks
+      if (gameType === 'tanks') {
+        if (gs.p1) drawTank(gs.p1.x, gs.p1.y, gs.p1.angle, '#06b6d4', gs.p1.hp);
+        if (gs.p2) drawTank(gs.p2.x, gs.p2.y, gs.p2.angle, '#ec4899', gs.p2.hp);
+
+        if (gs.bullets) {
+          ctx.fillStyle = '#f59e0b';
+          gs.bullets.forEach((b) => {
+            ctx.beginPath();
+            ctx.arc(b.x, b.y, 4, 0, Math.PI * 2);
+            ctx.fill();
+          });
+        }
+      }
+
+      // Render Pong
+      else if (gameType === 'pong') {
+        ctx.strokeStyle = '#334155';
+        ctx.setLineDash([6, 6]);
+        ctx.beginPath();
+        ctx.moveTo(canvas.width / 2, 0);
+        ctx.lineTo(canvas.width / 2, canvas.height);
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        ctx.fillStyle = '#06b6d4';
+        ctx.fillRect(20, gs.p1Y || 200, 12, 80);
+
+        ctx.fillStyle = '#ec4899';
+        ctx.fillRect(canvas.width - 32, gs.p2Y || 200, 12, 80);
+
+        if (gs.ball) {
+          ctx.fillStyle = '#38bdf8';
+          ctx.beginPath();
+          ctx.arc(gs.ball.x, gs.ball.y, 8, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+
+      // Render Platformer
+      else if (gameType === 'race') {
+        const platforms = [
+          { x: 0, y: 410, w: 800, h: 40 },
+          { x: 100, y: 320, w: 180, h: 15 },
+          { x: 340, y: 260, w: 150, h: 15 },
+          { x: 550, y: 320, w: 180, h: 15 },
+          { x: 200, y: 170, w: 200, h: 15 },
+          { x: 480, y: 130, w: 180, h: 15 },
+          { x: 350, y: 70, w: 100, h: 15 }
+        ];
+
+        ctx.fillStyle = '#1e293b';
+        platforms.forEach((plat) => ctx.fillRect(plat.x, plat.y, plat.w, plat.h));
+
+        ctx.font = '24px sans-serif';
+        ctx.fillText('👑', 386, 62);
+
+        if (gs.p1) {
+          ctx.fillStyle = '#06b6d4';
+          ctx.fillRect(gs.p1.x - 10, gs.p1.y - 10, 20, 20);
+        }
+        if (gs.p2) {
+          ctx.fillStyle = '#ec4899';
+          ctx.fillRect(gs.p2.x - 10, gs.p2.y - 10, 20, 20);
+        }
+      }
+    }
+
+    function drawTank(x, y, angle, color, hp) {
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.rotate(angle);
+
+      ctx.fillStyle = color;
+      ctx.fillRect(-16, -14, 32, 28);
+      ctx.fillStyle = '#0f172a';
+      ctx.fillRect(-18, -16, 36, 6);
+      ctx.fillRect(-18, 10, 36, 6);
+
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, -3, 20, 6);
+
+      ctx.restore();
+
+      ctx.fillStyle = color;
+      for (let i = 0; i < (hp || 0); i++) {
+        ctx.beginPath();
+        ctx.arc(x - 12 + i * 12, y - 24, 3, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+
     // --- Authentication & Peer Network Initialization ---
     async function initAuth() {
       if (isEmbeddedEnv) {
